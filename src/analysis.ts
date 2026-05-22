@@ -756,6 +756,31 @@ const phraseScore = (phrase: string, text: string) => {
   return words.filter((word) => normalizedText.includes(word)).length / words.length;
 };
 
+const NAVIGATION_NOISE =
+  /(mostre mais|mostre menos|locais proximos|outros empregos perto|industria work|registrar curriculo|empregadores|publicar emprego|whatjobs menu|sobre nos|internacional|contatar|para candidatos|para empresas|termos|politica de cookies|politica de privacidade|login de afiliado|multiposting|helpful resources|search close|location_on|administrativo eco|palette artes|shopping_cart|local_hospital|gavel gerenciamento)/;
+
+const isUsefulJobLine = (line: string) => {
+  const normalizedLine = normalize(line);
+  const tokenCount = tokenize(line).length;
+
+  if (line.length < 4 || line.length > 240) return false;
+  if (tokenCount > 32) return false;
+  if (NAVIGATION_NOISE.test(normalizedLine)) return false;
+  if (/^(menu|sim|nao|não|buscar|search|close|login|cadastre-se|registrar|publicar|cookies?)$/i.test(line.trim())) return false;
+  return true;
+};
+
+const getUsefulJobLines = (jobText: string) =>
+  jobText
+    .replace(/(Mostre mais|Mostre menos|Locais próximos|Outros empregos perto de mim|Indústria)/g, "\n$1")
+    .replace(/(Responsabilidades|Requisitos|Qualificações|Benefícios|Sobre a vaga|Descrição da vaga|Atividades):/gi, "\n$1:")
+    .split(/\n|•|- /)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter(isUsefulJobLine);
+
+const getUsefulJobText = (jobText: string) => getUsefulJobLines(jobText).join("\n");
+
 const isUsefulMissingTerm = (term: string) => {
   const normalizedTerm = normalize(term);
   if (normalizedTerm.length < 4) return false;
@@ -790,9 +815,10 @@ const requirementCoveredByResume = (requirement: string, resumeText: string) => 
 };
 
 const extractKeywords = (jobText: string) => {
-  const normalizedJob = normalize(jobText);
-  const tech = TECH_TERMS.filter((term) => containsNormalizedTerm(jobText, term));
-  const frequencies = tokenize(jobText).reduce<Record<string, number>>((acc, word) => {
+  const usefulJobText = getUsefulJobText(jobText) || jobText;
+  const normalizedJob = normalize(usefulJobText);
+  const tech = TECH_TERMS.filter((term) => containsNormalizedTerm(usefulJobText, term));
+  const frequencies = tokenize(usefulJobText).reduce<Record<string, number>>((acc, word) => {
     acc[word] = (acc[word] || 0) + 1;
     return acc;
   }, {});
@@ -804,7 +830,7 @@ const extractKeywords = (jobText: string) => {
     .slice(0, 28)
     .map(([word]) => word);
 
-  const multiWord = Array.from(jobText.matchAll(/\b[A-ZÁ-Ú][\wÁ-ú.+#-]*(?:[ \t]+[A-ZÁ-Úa-zá-ú][\wÁ-ú.+#-]*){1,3}/g))
+  const multiWord = Array.from(usefulJobText.matchAll(/\b[A-ZÁ-Ú][\wÁ-ú.+#-]*(?:[ \t]+[A-ZÁ-Úa-zá-ú][\wÁ-ú.+#-]*){1,3}/g))
     .map(([match]) => match)
     .filter((term) => tokenize(term).length <= 4 && tokenize(term).length > 1)
     .filter((term) => isUsefulMissingTerm(term))
@@ -819,10 +845,7 @@ const extractHardSkills = (resumeText: string, jobText: string) => {
 };
 
 const findRequirements = (jobText: string) => {
-  const lines = jobText
-    .split(/\n|•|- /)
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const lines = getUsefulJobLines(jobText)
     .filter((line) => !/^(sobre a vaga|responsabilidades?|requisitos?|benef[ií]cios?)\s*:?\s*$/i.test(line))
     .filter((line) => !/^(cargo|local)\s*:/i.test(line));
 
@@ -863,7 +886,9 @@ const getStructureRecommendations = (resumeText: string, jobText: string, missin
   const hasSkills = normalizedResume.includes("habilidades") || normalizedResume.includes("competencias");
   const hasExperience = normalizedResume.includes("experiencia");
   const hasEducation = normalizedResume.includes("formacao") || normalizedResume.includes("educacao");
-  const jobTitle = jobText.match(/(?:vaga|cargo|position|role)\s*:?\s*([^\n]+)/i)?.[1]?.trim();
+  const jobTitle = getUsefulJobLines(jobText)
+    .map((line) => line.match(/(?:vaga|cargo|position|role)\s*:?\s*([^\n|]{4,90})/i)?.[1]?.trim() || "")
+    .find((line) => line && isUsefulJobLine(line));
 
   if (hasObjective && !hasSummary) {
     recommendations.push("Substituir 'Objetivo' por 'Resumo profissional' com 3 linhas focadas no cargo-alvo.");
@@ -974,11 +999,11 @@ const buildFitImprovements = (
 ) => {
   const improvements: string[] = [];
   if (missingCritical.length) {
+    const readableCritical = missingCritical.map(cleanRequirementLabel).filter(isUsefulJobLine).slice(0, 3);
     improvements.push(
-      `Comprovar no currículo estes pontos da vaga que ainda não ficaram claros: ${missingCritical
-        .slice(0, 3)
-        .map(cleanRequirementLabel)
-        .join(" | ")}.`,
+      readableCritical.length
+        ? `Comprovar no currículo estes pontos da vaga que ainda não ficaram claros: ${readableCritical.join(" | ")}.`
+        : "A descrição importada parece ter ruído de navegação. Revise a vaga em modo texto para deixar apenas cargo, atividades e requisitos.",
     );
   }
   if (weakTerms.length) {
@@ -1392,6 +1417,7 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
     .slice(0, 12);
   const missingCritical = requirements
     .filter((req) => !coveredRequirements.includes(req))
+    .filter(isUsefulJobLine)
     .slice(0, 8);
   const structureRecommendations = getStructureRecommendations(resumeText, jobText, missingCritical);
   const blockerIssues = getBlockerIssues(resumeText, jobText, formatIssues, missingCritical, overallScore, weakTerms);

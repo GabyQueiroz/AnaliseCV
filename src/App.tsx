@@ -79,12 +79,22 @@ const fetchJobViaReader = async (targetUrl: string): Promise<JobUrlResponse> => 
   }
 
   const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim();
+  const navigationNoise =
+    /(mostre mais|mostre menos|locais próximos|outros empregos perto|indústria|registrar currículo|empregadores|publicar emprego|whatjobs menu|sobre nós|internacional|contatar|para candidatos|para empresas|termos|política de cookies|política de privacidade|login de afiliado|multiposting|helpful resources|search close|location_on|shopping_cart|local_hospital|gavel gerenciamento)/i;
   const cleanedText = text
     .replace(/^Title:.*$/m, "")
     .replace(/^URL Source:.*$/m, "")
     .replace(/^Published Time:.*$/m, "")
     .replace(/^Warning:.*$/m, "")
     .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .split(/\n|•|- /)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => line.length <= 240)
+    .filter((line) => line.split(/\s+/).length <= 34)
+    .filter((line) => !navigationNoise.test(line))
+    .join("\n")
     .trim();
 
   if (cleanedText.length < 80) {
