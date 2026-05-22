@@ -54,6 +54,46 @@ type JobUrlResponse = {
   error?: string;
 };
 
+const parseJobResponse = async (response: Response) => {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as JobUrlResponse;
+  }
+
+  const raw = await response.text();
+  return {
+    error: response.ok
+      ? "A resposta da extração não veio em JSON."
+      : `A rota de extração respondeu ${response.status}: ${raw.slice(0, 90).trim() || response.statusText}`,
+  };
+};
+
+const fetchJobViaReader = async (targetUrl: string): Promise<JobUrlResponse> => {
+  const readerUrl = `https://r.jina.ai/${targetUrl}`;
+  const response = await fetch(readerUrl, { headers: { accept: "text/plain" } });
+  const text = await response.text();
+
+  if (!response.ok) {
+    return { error: `Leitor público respondeu ${response.status}.` };
+  }
+
+  const title = text.match(/^Title:\s*(.+)$/m)?.[1]?.trim();
+  const cleanedText = text
+    .replace(/^Title:.*$/m, "")
+    .replace(/^URL Source:.*$/m, "")
+    .replace(/^Published Time:.*$/m, "")
+    .replace(/^Warning:.*$/m, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (cleanedText.length < 80) {
+    return { error: "O link abriu, mas não trouxe texto suficiente da vaga." };
+  }
+
+  return { title, text: cleanedText.slice(0, 18000), url: targetUrl };
+};
+
 const readTextFile = async (file: File) => file.text();
 
 const decodeXmlValue = (value: string) =>
@@ -693,10 +733,17 @@ export default function App() {
 
     try {
       const response = await fetch(`/api/job-from-url?url=${encodeURIComponent(trimmedUrl)}`);
-      const data = (await response.json()) as JobUrlResponse;
+      let data = await parseJobResponse(response);
 
-      if (!response.ok || !data.text) {
-        throw new Error(data.error || "Não foi possível extrair a vaga desse link.");
+      if ((!response.ok || !data.text) && response.status === 404) {
+        data = await fetchJobViaReader(trimmedUrl);
+      }
+
+      if (!data.text) {
+        throw new Error(
+          data.error ||
+            "Não foi possível extrair a vaga desse link. Se a página exigir login ou bloquear leitores automáticos, cole a descrição no modo texto.",
+        );
       }
 
       setJobText(data.text);
