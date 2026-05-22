@@ -14,6 +14,7 @@ import {
   LayoutList,
   Link,
   Loader2,
+  MapPin,
   Search,
   ShieldCheck,
   Sparkles,
@@ -438,6 +439,32 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
         <p>{result.recruiterSummary}</p>
       </section>
 
+      <div className="twoColumns">
+        <section className="panel fitGood">
+          <div className="sectionTitle">
+            <CheckCircle2 size={20} />
+            <h2>O que está bom para esta vaga</h2>
+          </div>
+          <ul className="cleanList">
+            {result.fitStrengths.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="panel fitImprove">
+          <div className="sectionTitle">
+            <AlertTriangle size={20} />
+            <h2>O que melhorar para esta vaga</h2>
+          </div>
+          <ul className="cleanList">
+            {result.fitImprovements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
       <section className={`panel atsDetected confidence${result.atsPrediction.confidence}`}>
         <div className="sectionTitle sectionTitleSplit">
           <div>
@@ -574,7 +601,10 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
         <div className="jobGrid">
           {result.linkedinSuggestions.map((suggestion) => (
             <a href={suggestion.url} target="_blank" rel="noreferrer" className="jobCard" key={suggestion.url}>
-              <strong>{suggestion.title}</strong>
+              <div className="jobCardHead">
+                <strong>{suggestion.title}</strong>
+                <b>{suggestion.fitScore}%</b>
+              </div>
               <p>{suggestion.reason}</p>
               <span>
                 Abrir busca <ExternalLink size={14} />
@@ -618,6 +648,7 @@ export default function App() {
   const [jobMode, setJobMode] = useState<JobMode>("description");
   const [resumeText, setResumeText] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [searchLocation, setSearchLocation] = useState("");
   const [jobText, setJobText] = useState("");
   const [jobUrl, setJobUrl] = useState("");
   const [resolvedJobUrl, setResolvedJobUrl] = useState("");
@@ -629,8 +660,8 @@ export default function App() {
   const [jobSource, setJobSource] = useState("");
   const canAnalyze = resumeText.trim().length > 120 && jobText.trim().length > 80;
   const result = useMemo(
-    () => (canAnalyze ? analyzeResume(resumeText, jobText, companyName, resolvedJobUrl || jobUrl) : null),
-    [canAnalyze, resumeText, jobText, companyName, resolvedJobUrl, jobUrl],
+    () => (canAnalyze ? analyzeResume(resumeText, jobText, companyName, resolvedJobUrl || jobUrl, searchLocation) : null),
+    [canAnalyze, resumeText, jobText, companyName, resolvedJobUrl, jobUrl, searchLocation],
   );
 
   const handleFile = async (file?: File) => {
@@ -760,6 +791,18 @@ export default function App() {
                   value={companyName}
                   onChange={(event) => setCompanyName(event.target.value)}
                   placeholder="Ex.: Nubank, Ambev, Hospital Albert Einstein..."
+                />
+              </div>
+            </label>
+            <label className="companyField" htmlFor="searchLocation">
+              <span>Cidade ou país para vagas</span>
+              <div>
+                <MapPin size={18} />
+                <input
+                  id="searchLocation"
+                  value={searchLocation}
+                  onChange={(event) => setSearchLocation(event.target.value)}
+                  placeholder="Ex.: Ponta Grossa, Portugal, França, Remote, Worldwide..."
                 />
               </div>
             </label>

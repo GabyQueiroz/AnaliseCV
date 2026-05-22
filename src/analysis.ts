@@ -14,6 +14,8 @@ export type AnalysisResult = {
   passProbability: "Alta" | "Media" | "Baixa";
   atsPrediction: AtsPrediction;
   atsEngines: AtsEngine[];
+  fitStrengths: string[];
+  fitImprovements: string[];
   hardSkills: string[];
   softSignals: string[];
   missingCritical: string[];
@@ -40,6 +42,7 @@ export type AtsPrediction = {
 export type LinkedInSuggestion = {
   title: string;
   reason: string;
+  fitScore: number;
   url: string;
 };
 
@@ -358,6 +361,46 @@ const ATS_SIGNATURES = [
     patterns: ["phenompeople.com", "phenom.com"],
     evidence: "link de vaga em Phenom",
   },
+  {
+    name: "Oracle Taleo",
+    patterns: ["brassring.com", "sjobs.brassring.com", "kenexa.com"],
+    evidence: "link de vaga em IBM/Kenexa BrassRing, comum em grandes empresas globais",
+  },
+  {
+    name: "Bullhorn",
+    patterns: ["bullhornstaffing.com", "bullhorn.com"],
+    evidence: "link de vaga em Bullhorn",
+  },
+  {
+    name: "JazzHR",
+    patterns: ["applytojob.com", "jazz.co", "jazzhr.com"],
+    evidence: "link de vaga em JazzHR",
+  },
+  {
+    name: "Breezy HR",
+    patterns: ["breezy.hr"],
+    evidence: "link de vaga em Breezy HR",
+  },
+  {
+    name: "Comeet",
+    patterns: ["comeet.com", "apply.comeet.com"],
+    evidence: "link de vaga em Comeet",
+  },
+  {
+    name: "Jobylon",
+    patterns: ["jobylon.com"],
+    evidence: "link de vaga em Jobylon",
+  },
+  {
+    name: "Homerun",
+    patterns: ["homerun.co"],
+    evidence: "link de vaga em Homerun",
+  },
+  {
+    name: "Rippling Recruiting",
+    patterns: ["rippling.com/careers", "rippling-ats.com"],
+    evidence: "link de vaga em Rippling Recruiting",
+  },
 ];
 
 const COMPANY_HINTS = [
@@ -596,6 +639,69 @@ const ENGINE_DEFINITIONS: EngineDefinition[] = [
     formatAdjust: 0,
     requirementAdjust: 0.01,
   },
+  {
+    name: "Bullhorn",
+    profile: "Muito usado por agências e consultorias de recrutamento; busca por palavras-chave e histórico recente pesa bastante.",
+    focus: ["keywords", "histórico", "recrutador"],
+    region: "EUA / Reino Unido / Global",
+    baseAdjust: 0.02,
+    formatAdjust: 0,
+    requirementAdjust: 0,
+  },
+  {
+    name: "JazzHR",
+    profile: "ATS de pequenas e médias empresas; currículos simples, cargos claros e skills fáceis de buscar performam melhor.",
+    focus: ["clareza", "keywords", "formato"],
+    region: "EUA / Global SMB",
+    baseAdjust: 0.01,
+    formatAdjust: 0.01,
+    requirementAdjust: 0,
+  },
+  {
+    name: "Breezy HR",
+    profile: "Plataforma visual para PMEs e startups; matching depende bastante de título, skills e experiência escaneável.",
+    focus: ["perfil", "skills", "experiência"],
+    region: "EUA / Europa / Global",
+    baseAdjust: 0.02,
+    formatAdjust: -0.01,
+    requirementAdjust: 0,
+  },
+  {
+    name: "Comeet",
+    profile: "Usado por empresas tech globais; colaboração do time e scorecards tornam evidências objetivas importantes.",
+    focus: ["scorecards", "skills", "evidências"],
+    region: "EUA / Israel / Europa",
+    baseAdjust: 0.04,
+    formatAdjust: -0.01,
+    requirementAdjust: 0.01,
+  },
+  {
+    name: "Jobylon",
+    profile: "Presente na Europa, especialmente países nórdicos; clareza, idioma e aderência aos requisitos são sinais importantes.",
+    focus: ["requisitos", "idioma", "experiência"],
+    region: "Europa",
+    baseAdjust: 0.01,
+    formatAdjust: 0,
+    requirementAdjust: 0.02,
+  },
+  {
+    name: "Homerun",
+    profile: "Comum em empresas criativas e PMEs europeias; recrutador avalia portfólio, clareza e motivação além do currículo.",
+    focus: ["perfil", "portfólio", "clareza"],
+    region: "Europa",
+    baseAdjust: 0.01,
+    formatAdjust: -0.01,
+    requirementAdjust: 0,
+  },
+  {
+    name: "Rippling Recruiting",
+    profile: "ATS/HCM moderno usado por empresas em crescimento; dados estruturados e skills rastreáveis ajudam o matching.",
+    focus: ["skills", "formato", "histórico"],
+    region: "EUA / Global",
+    baseAdjust: 0.03,
+    formatAdjust: 0.01,
+    requirementAdjust: 0.01,
+  },
 ];
 
 const normalize = (text: string) =>
@@ -743,7 +849,62 @@ const getBlockerIssues = (resumeText: string, jobText: string, formatIssues: str
   return blockers.length ? blockers : ["Nenhum bloqueio grave detectado. O foco agora e aumentar clareza, evidencia e aderencia textual."];
 };
 
-const buildLinkedinSuggestions = (resumeText: string, jobText: string, hardSkills: string[], matchedKeywords: string[]) => {
+const buildFitStrengths = (
+  matchedKeywords: string[],
+  hardSkills: string[],
+  coveredRequirements: string[],
+  metricDensity: number,
+  formatIssues: string[],
+) => {
+  const strengths: string[] = [];
+  if (matchedKeywords.length) {
+    strengths.push(`O currículo já conversa com a vaga em termos como: ${matchedKeywords.slice(0, 6).map(polishKeyword).join(", ")}.`);
+  }
+  if (hardSkills.length) {
+    strengths.push(`Há habilidades rastreáveis por ATS: ${hardSkills.slice(0, 6).map(polishKeyword).join(", ")}.`);
+  }
+  if (coveredRequirements.length) {
+    strengths.push(`${coveredRequirements.length} requisito(s) da vaga aparecem com algum sinal no currículo.`);
+  }
+  if (metricDensity > 0.35) {
+    strengths.push("Existem números/resultados no currículo, o que ajuda ranking e leitura humana.");
+  }
+  if (!formatIssues.length) {
+    strengths.push("A estrutura textual parece amigável para parser: seções claras e pouco risco de layout.");
+  }
+  return strengths.length ? strengths : ["O currículo tem base aproveitável, mas precisa evidenciar melhor os sinais da vaga."];
+};
+
+const buildFitImprovements = (
+  missingCritical: string[],
+  weakTerms: string[],
+  formatIssues: string[],
+  resumeText: string,
+  jobText: string,
+) => {
+  const improvements: string[] = [];
+  if (missingCritical.length) {
+    improvements.push(`Explicitar melhor estes requisitos da vaga, se forem verdadeiros: ${missingCritical.slice(0, 3).join(" | ")}.`);
+  }
+  if (weakTerms.length) {
+    improvements.push(`Ajustar linguagem para incluir termos relevantes ausentes: ${weakTerms.slice(0, 6).map(polishKeyword).join(", ")}.`);
+  }
+  if (!/\d+%|\b\d{2,}\b|R\$\s?\d+/i.test(resumeText)) {
+    improvements.push("Adicionar impacto mensurável real: volume, prazo, resultado, redução, aumento, número de pessoas ou projetos.");
+  }
+  if (formatIssues.length) {
+    improvements.push(`Corrigir risco de ATS: ${formatIssues.slice(0, 2).join(" ")}`);
+  }
+  if (/ingl[eê]s|english/i.test(jobText) && !/ingl[eê]s|english/i.test(resumeText)) {
+    improvements.push("A vaga menciona inglês; inclua o nível somente se isso for verdadeiro.");
+  }
+  if (/remoto|remote|híbrido|hybrid|presencial/i.test(jobText) && !/remoto|remote|híbrido|hybrid|presencial/i.test(resumeText)) {
+    improvements.push("Se houver preferência/disponibilidade de modelo de trabalho, deixe claro no topo ou em informações adicionais.");
+  }
+  return improvements.length ? improvements : ["Melhorias principais: deixar o resumo mais direto, manter termos da vaga e priorizar evidências reais."];
+};
+
+const buildLinkedinSuggestions = (resumeText: string, hardSkills: string[], searchLocation: string) => {
   const combined = normalize(`${resumeText}\n${hardSkills.join(" ")}`);
   const ranked = ROLE_RULES.map((role) => {
     const hits = role.terms.filter((term) => combined.includes(normalize(term)));
@@ -771,12 +932,14 @@ const buildLinkedinSuggestions = (resumeText: string, jobText: string, hardSkill
 
   return suggestions.map((suggestion) => {
     const keywords = uniq([suggestion.title, ...suggestion.hits.slice(0, 3)]).join(" ");
+    const location = searchLocation.trim() || "Worldwide";
     return {
       title: suggestion.title,
       reason: suggestion.hits.length
         ? `Compatibilidade pelo currículo: ${suggestion.hits.slice(0, 4).join(", ")}.`
         : "Sugestão baseada nos termos principais encontrados no currículo.",
-      url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}&location=Brasil`,
+      fitScore: Math.min(99, Math.max(35, suggestion.score * 14 + hardSkills.length * 2)),
+      url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}&location=${encodeURIComponent(location)}`,
     };
   });
 };
@@ -1089,7 +1252,7 @@ const buildProfessionalResume = (
     .replace(/\n{3,}/g, "\n\n");
 };
 
-export function analyzeResume(resumeText: string, jobText: string, companyName = "", jobUrl = ""): AnalysisResult {
+export function analyzeResume(resumeText: string, jobText: string, companyName = "", jobUrl = "", searchLocation = ""): AnalysisResult {
   const keywords = extractKeywords(jobText);
   const matchedKeywords = keywords.filter((keyword) => phraseScore(keyword, resumeText) >= 0.68);
   const missingKeywords = keywords.filter((keyword) => !matchedKeywords.includes(keyword));
@@ -1141,12 +1304,13 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
   );
   const passProbability = overallScore >= 76 ? "Alta" : overallScore >= 55 ? "Media" : "Baixa";
 
+  const fitStrengths = buildFitStrengths(matchedKeywords, hardSkills, coveredRequirements, metricDensity, formatIssues);
+  const fitImprovements = buildFitImprovements(missingCritical, weakTerms, formatIssues, resumeText, jobText);
   const rewriteBullets = [
-    "Trocar objetivo generico por resumo de 3 linhas com cargo-alvo, senioridade, setor e habilidades da vaga que ja aparecem no curriculo.",
-    "Criar secao Competencias-chave com termos exatos da vaga apenas quando forem verdadeiros.",
-    "Reescrever experiencias no padrao: acao + contexto + ferramenta/metodo + resultado mensuravel.",
-    "Mover requisitos obrigatorios comprovados para o terco superior do curriculo.",
-    "Remover ou encurtar informacoes sem relacao direta com a vaga para aumentar densidade de sinal.",
+    ...fitImprovements.slice(0, 4),
+    matchedKeywords.length
+      ? `Manter no topo os sinais que já batem com a vaga: ${matchedKeywords.slice(0, 5).map(polishKeyword).join(", ")}.`
+      : "Reescrever o resumo profissional usando palavras reais da vaga que também existam na sua experiência.",
   ];
 
   const integrityWarnings = [
@@ -1160,6 +1324,8 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
     passProbability,
     atsPrediction,
     atsEngines: orderedAtsEngines,
+    fitStrengths,
+    fitImprovements,
     hardSkills,
     softSignals,
     missingCritical,
@@ -1169,7 +1335,7 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
     rewriteBullets,
     structureRecommendations,
     blockerIssues,
-    linkedinSuggestions: buildLinkedinSuggestions(resumeText, jobText, hardSkills, matchedKeywords),
+    linkedinSuggestions: buildLinkedinSuggestions(resumeText, hardSkills, searchLocation),
     optimizedResume: buildProfessionalResume(resumeText, jobText, matchedKeywords, hardSkills),
     recruiterSummary:
       overallScore >= 76

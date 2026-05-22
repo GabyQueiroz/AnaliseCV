@@ -587,6 +587,22 @@ h2 {
   color: #9f2f20;
 }
 
+.fitGood {
+  border-color: #b9dac9;
+}
+
+.fitGood .sectionTitle {
+  color: #0f6b45;
+}
+
+.fitImprove {
+  border-color: #f1d59b;
+}
+
+.fitImprove .sectionTitle {
+  color: #946200;
+}
+
 .jobGrid {
   display: grid;
   gap: 12px;
@@ -611,6 +627,21 @@ h2 {
   color: #5f6b63;
   line-height: 1.45;
   margin: 0;
+}
+
+.jobCardHead {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.jobCardHead b {
+  background: #dff6e9;
+  border-radius: 999px;
+  color: #0f6b45;
+  font-size: 0.82rem;
+  padding: 5px 8px;
 }
 
 .jobCard span {
