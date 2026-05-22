@@ -216,6 +216,14 @@ const ACTION_VERBS = [
 
 const ROLE_RULES = [
   {
+    title: "Cientista de Dados Júnior",
+    terms: ["python", "machine learning", "inteligencia artificial", "ia", "sql", "dados", "analytics", "estatistica", "modelo"],
+  },
+  {
+    title: "Analista de Machine Learning",
+    terms: ["machine learning", "python", "ia", "inteligencia artificial", "modelo", "dados", "tensorflow", "pytorch", "algoritmos"],
+  },
+  {
     title: "Analista de Dados",
     terms: ["sql", "power bi", "tableau", "excel", "etl", "analytics", "python", "dados", "indicadores"],
   },
@@ -242,6 +250,18 @@ const ROLE_RULES = [
   {
     title: "Analista Administrativo",
     terms: ["excel", "erp", "sap", "totvs", "relatorios", "processos", "administrativo"],
+  },
+  {
+    title: "Engenheiro Eletricista Júnior",
+    terms: ["engenharia eletrica", "engenharia elétrica", "eletrica", "elétrica", "autocad", "power bi", "projetos", "manutencao", "energia"],
+  },
+  {
+    title: "Assistente de Projetos",
+    terms: ["projetos", "relatorios", "processos", "organizacao", "excel", "power bi", "documentacao", "indicadores"],
+  },
+  {
+    title: "Pesquisador em Engenharia",
+    terms: ["pesquisa", "engenharia", "doutorado", "mestrado", "artigo", "projeto", "analise", "dados"],
   },
   {
     title: "Analista de RH",
@@ -764,10 +784,27 @@ const isUsefulJobLine = (line: string) => {
   const tokenCount = tokenize(line).length;
 
   if (line.length < 4 || line.length > 240) return false;
-  if (tokenCount > 32) return false;
+  if (tokenCount < 2 || tokenCount > 32) return false;
   if (NAVIGATION_NOISE.test(normalizedLine)) return false;
+  if (/\b(em|de|da|do|para|com|por|no|na|e|ou)$/i.test(normalizedLine)) return false;
   if (/^(menu|sim|nao|não|buscar|search|close|login|cadastre-se|registrar|publicar|cookies?)$/i.test(line.trim())) return false;
   return true;
+};
+
+const isRequirementLike = (line: string) => {
+  const normalizedLine = normalize(line);
+  if (!isUsefulJobLine(line)) return false;
+  if (/^(reconhecimento|portfolio|portifolio|beneficios?|localizacao|curitiba|salario|empresa|sobre nos)$/i.test(normalizedLine)) {
+    return false;
+  }
+  if (
+    /(obrigatorio|required|must|necessario|requisito|experiencia|ensino|conhecimento|dominio|fluente|superior|bacharel|certifica|atendimento|comunicacao|organizacao|disponibilidade|responsavel|atuar|desenvolver|criar|analisar|gerenciar|suporte|habilidade)/i.test(
+      normalizedLine,
+    )
+  ) {
+    return true;
+  }
+  return TECH_TERMS.some((term) => containsNormalizedTerm(line, term));
 };
 
 const getUsefulJobLines = (jobText: string) =>
@@ -849,13 +886,9 @@ const findRequirements = (jobText: string) => {
     .filter((line) => !/^(sobre a vaga|responsabilidades?|requisitos?|benef[ií]cios?)\s*:?\s*$/i.test(line))
     .filter((line) => !/^(cargo|local)\s*:/i.test(line));
 
-  const strongSignals = lines.filter((line) =>
-    /(obrigatorio|required|must|necessario|requisito|experiencia|ensino|conhecimento|dominio|fluente|superior|bacharel|certifica|atendimento|comunicacao|organizacao|disponibilidade)/i.test(
-      normalize(line),
-    ),
-  );
+  const strongSignals = lines.filter(isRequirementLike);
 
-  return strongSignals.length ? strongSignals.slice(0, 14) : lines.slice(0, 10);
+  return strongSignals.slice(0, 14);
 };
 
 const getFormatIssues = (resumeText: string) => {
@@ -1025,27 +1058,32 @@ const buildFitImprovements = (
 };
 
 const buildLinkedinSuggestions = (resumeText: string, hardSkills: string[], searchLocation: string) => {
-  const combined = normalize(`${resumeText}\n${hardSkills.join(" ")}`);
+  const resumeOnlySkills = uniq([
+    ...TECH_TERMS.filter((term) => containsNormalizedTerm(resumeText, term)),
+    ...hardSkills.filter((term) => containsNormalizedTerm(resumeText, term)),
+  ]);
+  const combined = normalize(`${resumeText}\n${resumeOnlySkills.join(" ")}`);
   const ranked = ROLE_RULES.map((role) => {
     const hits = role.terms.filter((term) => combined.includes(normalize(term)));
-    return { ...role, hits, score: hits.length };
+    const titleSignal = normalize(resumeText).includes(normalize(role.title.replace(/\s+j[uú]nior/i, ""))) ? 2 : 0;
+    return { ...role, hits, score: hits.length + titleSignal };
   })
-    .filter((role) => role.score > 0)
+    .filter((role) => role.score >= 2 || role.hits.some((hit) => ["machine learning", "power bi", "sql", "python"].includes(normalize(hit))))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, 4);
 
   const fallbackTitle =
-    resumeText.match(/(?:cargo|objetivo|resumo)\s*:?\s*([^\n]+)/i)?.[1]?.trim() ||
-    hardSkills.slice(0, 2).join(" ") ||
-    "analista";
+    resumeText.match(/(?:cargo|objetivo|resumo)\s*:?\s*([^\n]{6,70})/i)?.[1]?.trim() ||
+    (resumeOnlySkills.length >= 2 ? `Analista de ${resumeOnlySkills.slice(0, 2).join(" e ")}` : "") ||
+    "Vagas alinhadas ao currículo";
 
   const suggestions = ranked.length
     ? ranked
     : [
         {
           title: fallbackTitle,
-          terms: hardSkills,
-          hits: hardSkills.slice(0, 3),
+          terms: resumeOnlySkills,
+          hits: resumeOnlySkills.slice(0, 3),
           score: 1,
         },
       ];
@@ -1056,9 +1094,9 @@ const buildLinkedinSuggestions = (resumeText: string, hardSkills: string[], sear
     return {
       title: suggestion.title,
       reason: suggestion.hits.length
-        ? `Compatibilidade pelo currículo: ${suggestion.hits.slice(0, 4).join(", ")}.`
+        ? `Compatibilidade pelo currículo: ${suggestion.hits.slice(0, 4).map(polishKeyword).join(", ")}.`
         : "Sugestão baseada nos termos principais encontrados no currículo.",
-      fitScore: Math.min(99, Math.max(35, suggestion.score * 14 + hardSkills.length * 2)),
+      fitScore: Math.min(96, Math.max(42, suggestion.score * 16 + resumeOnlySkills.length * 2)),
       url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}&location=${encodeURIComponent(location)}`,
     };
   });
