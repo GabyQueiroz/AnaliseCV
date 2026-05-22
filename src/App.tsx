@@ -31,20 +31,20 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 type InputMode = "upload" | "paste";
 type JobMode = "description" | "link";
 
-const jobPlaceholder = `Exemplo de descricao:
+const jobPlaceholder = `Exemplo de descrição:
 
 Cargo: Analista de Dados Pleno
 
 Responsabilidades:
 - Criar dashboards executivos em Power BI
-- Construir consultas SQL para analise de bases comerciais
-- Automatizar rotinas de relatorios e indicadores
+- Construir consultas SQL para análise de bases comerciais
+- Automatizar rotinas de relatórios e indicadores
 - Trabalhar com times de vendas, marketing e produto
 
 Requisitos:
-- Experiencia com SQL, Power BI e Excel avancado
+- Experiência com SQL, Power BI e Excel avançado
 - Conhecimento de ETL e modelagem de dados
-- Boa comunicacao com areas de negocio
+- Boa comunicação com áreas de negócio
 - Diferencial: Python, CRM e indicadores SaaS`;
 
 type JobUrlResponse = {
@@ -90,7 +90,7 @@ const readLattesXml = async (file: File) => {
   const parserError = xml.querySelector("parsererror");
 
   if (parserError) {
-    throw new Error("Nao consegui ler esse XML do Lattes. Exporte novamente ou use TXT/HTML.");
+    throw new Error("Não consegui ler esse XML do Lattes. Exporte novamente ou use TXT/HTML.");
   }
 
   const getAttr = (selector: string, attr: string) => xml.querySelector(selector)?.getAttribute(attr) || "";
@@ -172,7 +172,7 @@ const readDocxFile = async (file: File) => {
 
 const readPdfFile = async (file: File) => {
   if (file.size === 0) {
-    throw new Error("Esse PDF esta vazio, com 0 bytes. Exporte novamente do Lattes em XML/HTML/TXT ou envie outro arquivo.");
+    throw new Error("Esse PDF está vazio, com 0 bytes. Exporte novamente do Lattes em XML/HTML/TXT ou envie outro arquivo.");
   }
 
   const buffer = await file.arrayBuffer();
@@ -201,7 +201,7 @@ const readPdfFile = async (file: File) => {
 
   const text = pages.join("\n").trim();
   if (!text) {
-    throw new Error("Nao encontrei texto selecionavel nesse PDF. Se veio do Lattes, prefira exportar XML/HTML/TXT.");
+    throw new Error("Não encontrei texto selecionável nesse PDF. Se veio do Lattes, prefira exportar XML/HTML/TXT.");
   }
 
   return text;
@@ -209,7 +209,7 @@ const readPdfFile = async (file: File) => {
 
 const parseFile = async (file: File) => {
   if (file.size === 0) {
-    throw new Error("O arquivo esta vazio, com 0 bytes. Exporte novamente ou selecione outro arquivo.");
+    throw new Error("O arquivo está vazio, com 0 bytes. Exporte novamente ou selecione outro arquivo.");
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -219,7 +219,7 @@ const parseFile = async (file: File) => {
   if (["html", "htm"].includes(extension || "")) return cleanHtmlText(await file.text());
   if (extension === "rtf") return cleanRtfText(await file.text());
   if (["txt", "md", "csv"].includes(extension || "")) return readTextFile(file);
-  throw new Error("Formato nao suportado. Use PDF, DOCX, TXT, XML, HTML ou RTF.");
+  throw new Error("Formato não suportado. Use PDF, DOCX, TXT, XML, HTML ou RTF.");
 };
 
 const splitResumeSections = (text: string) => {
@@ -419,14 +419,14 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
           icon={<CheckCircle2 size={22} />}
           label="Melhor ATS"
           value={bestEngine.name}
-          detail={`${bestEngine.score}/100 na simulacao`}
+          detail={`${bestEngine.score}/100 na simulação`}
           tone="good"
         />
         <MetricCard
           icon={<AlertTriangle size={22} />}
           label="Maior risco"
           value={weakestEngine.name}
-          detail={`${weakestEngine.score}/100 na simulacao`}
+          detail={`${weakestEngine.score}/100 na simulação`}
           tone={scoreColor(weakestEngine.score)}
         />
       </div>
@@ -434,7 +434,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
       <section className="insightBand">
         <div>
           <Brain size={24} />
-          <h2>Diagnostico principal</h2>
+          <h2>Diagnóstico principal</h2>
         </div>
         <p>{result.recruiterSummary}</p>
       </section>
@@ -469,7 +469,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
         <div className="sectionTitle sectionTitleSplit">
           <div>
             <Building2 size={20} />
-            <h2>ATS provavel desta empresa</h2>
+            <h2>ATS provável desta empresa</h2>
           </div>
           <span>{result.atsPrediction.confidence}</span>
         </div>
@@ -486,7 +486,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
       <section className="panel">
         <div className="sectionTitle">
           <FileSearch size={20} />
-          <h2>Simulacao por ATS</h2>
+          <h2>Simulação por ATS</h2>
         </div>
         <div className="engineGrid">
           {result.atsEngines.map((engine) => (
@@ -521,16 +521,16 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
             <Sparkles size={20} />
             <h2>Termos encontrados</h2>
           </div>
-          <TagList items={result.matchedKeywords} empty="Nenhum termo forte da vaga foi encontrado no curriculo." />
+          <TagList items={result.matchedKeywords} empty="Nenhum termo forte da vaga foi encontrado no currículo." />
         </section>
 
         <section className="panel">
           <div className="sectionTitle">
             <AlertTriangle size={20} />
-            <h2>Lacunas criticas</h2>
+            <h2>Lacunas críticas</h2>
           </div>
           <ul className="cleanList">
-            {(result.missingCritical.length ? result.missingCritical : ["Sem lacunas obrigatorias claras detectadas."]).map(
+            {(result.missingCritical.length ? result.missingCritical : ["Sem lacunas obrigatórias claras detectadas."]).map(
               (item) => (
                 <li key={item}>{item}</li>
               ),
@@ -543,7 +543,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
         <section className="panel">
           <div className="sectionTitle">
             <ShieldCheck size={20} />
-            <h2>Otimizar sem inventar</h2>
+            <h2>Otimizar</h2>
           </div>
           <ul className="cleanList">
             {result.rewriteBullets.map((item) => (
@@ -596,7 +596,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
       <section className="panel">
         <div className="sectionTitle">
           <BriefcaseBusiness size={20} />
-          <h2>Vagas provaveis no LinkedIn</h2>
+          <h2>Vagas prováveis no LinkedIn</h2>
         </div>
         <div className="jobGrid">
           {result.linkedinSuggestions.map((suggestion) => (
@@ -618,7 +618,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
         <div className="sectionTitle sectionTitleSplit">
           <div>
             <Clipboard size={20} />
-            <h2>Curriculo sugerido</h2>
+            <h2>Currículo sugerido</h2>
           </div>
           <button className="downloadButton" onClick={() => downloadOptimizedPdf(result.optimizedResume)}>
             <Download size={18} />
@@ -631,7 +631,7 @@ function ResultPanel({ result }: { result: AnalysisResult }) {
       <section className="panel">
         <div className="sectionTitle">
           <ShieldCheck size={20} />
-          <h2>Guardrails eticos</h2>
+          <h2>Guardrails éticos</h2>
         </div>
         <ul className="cleanList">
           {result.integrityWarnings.map((item) => (
@@ -674,7 +674,7 @@ export default function App() {
       setResumeText(text);
       setMode("paste");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nao foi possivel ler o arquivo.");
+      setError(err instanceof Error ? err.message : "Não foi possível ler o arquivo.");
     } finally {
       setIsReading(false);
     }
@@ -696,7 +696,7 @@ export default function App() {
       const data = (await response.json()) as JobUrlResponse;
 
       if (!response.ok || !data.text) {
-        throw new Error(data.error || "Nao foi possivel extrair a vaga desse link.");
+        throw new Error(data.error || "Não foi possível extrair a vaga desse link.");
       }
 
       setJobText(data.text);
@@ -704,7 +704,7 @@ export default function App() {
       setResolvedJobUrl(data.url || trimmedUrl);
       setJobMode("description");
     } catch (err) {
-      setJobError(err instanceof Error ? err.message : "Nao foi possivel acessar a vaga.");
+      setJobError(err instanceof Error ? err.message : "Não foi possível acessar a vaga.");
     } finally {
       setIsFetchingJob(false);
     }
@@ -714,7 +714,7 @@ export default function App() {
     <main>
       <header className="topbar">
         <div>
-          <strong>AnaliseCV IA</strong>
+          <strong>AnáliseCV IA</strong>
           <span>Simulador ATS e reescrita honesta para vagas</span>
         </div>
         <div className="statusPill">
@@ -725,11 +725,11 @@ export default function App() {
 
       <section className="hero">
         <div className="heroText">
-          <span className="eyebrow">IA para curriculos estrategicos</span>
-          <h1>Descubra se seu curriculo passaria pela triagem antes de se candidatar.</h1>
+          <span className="eyebrow">IA para currículos estratégicos</span>
+          <h1>Descubra se seu currículo passaria pela triagem antes de se candidatar.</h1>
           <p>
-            Cole a vaga, envie o curriculo e receba uma analise inspirada nos principais ATS do mercado, com um novo
-            texto reorganizado para destacar o que voce realmente ja tem.
+            Cole a vaga, envie o currículo e receba uma análise inspirada nos principais ATS do mercado, com um novo
+            texto reorganizado para destacar o que você realmente já tem.
           </p>
         </div>
         <div className="heroScore">
@@ -744,7 +744,7 @@ export default function App() {
           <section className="panel inputPanel">
             <div className="sectionTitle">
               <Upload size={20} />
-              <h2>Curriculo</h2>
+              <h2>Currículo</h2>
             </div>
             <div className="segmented">
               <button className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}>
@@ -771,7 +771,7 @@ export default function App() {
                 className="inputText"
                 value={resumeText}
                 onChange={(event) => setResumeText(event.target.value)}
-                placeholder="Cole aqui o texto do curriculo..."
+                placeholder="Cole aqui o texto do currículo..."
               />
             )}
             {error ? <p className="error">{error}</p> : null}
@@ -808,7 +808,7 @@ export default function App() {
             </label>
             <div className="segmented">
               <button className={jobMode === "description" ? "active" : ""} onClick={() => setJobMode("description")}>
-                Descricao
+                Descrição
               </button>
               <button className={jobMode === "link" ? "active" : ""} onClick={() => setJobMode("link")}>
                 Link
@@ -834,7 +834,7 @@ export default function App() {
                   </button>
                 </div>
                 <p>
-                  Funciona melhor com paginas publicas. Se o site bloquear acesso automatizado, cole a descricao no modo
+                  Funciona melhor com páginas públicas. Se o site bloquear acesso automatizado, cole a descrição no modo
                   texto.
                 </p>
                 {jobError ? <p className="error">{jobError}</p> : null}
@@ -861,7 +861,7 @@ export default function App() {
           <section className="emptyState">
             <Brain size={34} />
             <h2>Pronto para analisar</h2>
-            <p>Adicione um curriculo com pelo menos 120 caracteres e uma vaga com pelo menos 80 caracteres.</p>
+            <p>Adicione um currículo com pelo menos 120 caracteres e uma vaga com pelo menos 80 caracteres.</p>
           </section>
         ) : (
           <ResultPanel result={result} />

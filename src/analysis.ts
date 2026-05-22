@@ -11,7 +11,7 @@ export type AtsEngine = {
 
 export type AnalysisResult = {
   overallScore: number;
-  passProbability: "Alta" | "Media" | "Baixa";
+  passProbability: "Alta" | "Média" | "Baixa";
   atsPrediction: AtsPrediction;
   atsEngines: AtsEngine[];
   fitStrengths: string[];
@@ -33,7 +33,7 @@ export type AnalysisResult = {
 
 export type AtsPrediction = {
   name: string;
-  confidence: "Alta" | "Media" | "Baixa";
+  confidence: "Alta" | "Média" | "Baixa";
   source: string;
   evidence: string[];
   recommendation: string;
@@ -100,6 +100,25 @@ const STOPWORDS = new Set([
   "an",
   "be",
   "we",
+  "sobre",
+  "vaga",
+  "vagas",
+  "estamos",
+  "salario",
+  "salário",
+  "vale",
+  "beneficio",
+  "benefício",
+  "beneficios",
+  "benefícios",
+  "transporte",
+  "alimentacao",
+  "alimentação",
+  "curitiba",
+  "presencial",
+  "hibrido",
+  "híbrido",
+  "remoto",
 ]);
 
 const TECH_TERMS = [
@@ -234,7 +253,7 @@ const ATS_SIGNATURES = [
   {
     name: "Workday + HiredScore/Paradox",
     patterns: ["myworkdayjobs.com", "workday.com", "wd1.myworkdaysite.com", "wd3.myworkdayjobs.com"],
-    evidence: "link de candidatura em dominio Workday",
+    evidence: "link de candidatura em domínio Workday",
   },
   {
     name: "Greenhouse Real Talent",
@@ -720,6 +739,14 @@ const tokenize = (text: string) =>
     .split(" ")
     .filter((word) => word.length > 2 && !STOPWORDS.has(word));
 
+const containsNormalizedTerm = (text: string, term: string) => {
+  const normalizedText = ` ${normalize(text)} `;
+  const normalizedTerm = normalize(term);
+  if (!normalizedTerm) return false;
+  if (normalizedTerm.length <= 3) return new RegExp(`(^|\\s)${normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`).test(normalizedText);
+  return normalizedText.includes(` ${normalizedTerm} `) || normalizedText.includes(normalizedTerm);
+};
+
 const phraseScore = (phrase: string, text: string) => {
   const normalizedPhrase = normalize(phrase);
   const normalizedText = normalize(text);
@@ -729,9 +756,42 @@ const phraseScore = (phrase: string, text: string) => {
   return words.filter((word) => normalizedText.includes(word)).length / words.length;
 };
 
+const isUsefulMissingTerm = (term: string) => {
+  const normalizedTerm = normalize(term);
+  if (normalizedTerm.length < 4) return false;
+  if (/^\d+$/.test(normalizedTerm)) return false;
+  if (STOPWORDS.has(normalizedTerm)) return false;
+  if (
+    /^(rest|data|vaga|sobre|estamos|cargo|contratando|ensino|medio|completo|salario|beneficios?|vale|transporte|alimentacao|curitiba|modelo|trabalho|requisitos?)$/.test(
+      normalizedTerm,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /(sobre a vaga|estamos|contratando|ensino medio|vale transporte|vale alimentacao|salario|beneficios?|cidade|localizacao|curitiba|\blocal\b|\bcargo\b)/.test(
+      normalizedTerm,
+    )
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const requirementCoveredByResume = (requirement: string, resumeText: string) => {
+  const req = normalize(requirement);
+  const resume = normalize(resumeText);
+  const hasHigherEducation = /(graduacao|bacharel|licenciatura|tecnologo|superior|pos graduacao|especializacao|mestrado|doutorado|phd|mba)/.test(resume);
+  if (/ensino medio|ensino fundamental|2 grau|segundo grau/.test(req) && hasHigherEducation) return true;
+  if (/superior|graduacao|bacharel|licenciatura|tecnologo/.test(req) && /(graduacao|bacharel|licenciatura|tecnologo|superior|pos graduacao|mestrado|doutorado|phd|mba)/.test(resume)) return true;
+  if (/experiencia na funcao|experiencia na area|desejavel experiencia/.test(req) && /(experiencia|atuei|trabalhei|aprendiz|estagio|estagi|assistente|analista|projeto)/.test(resume)) return true;
+  if (/ingles|english/.test(req) && /(ingles|english|toefl|ielts|intermediario|avancado|fluente)/.test(resume)) return true;
+  return phraseScore(requirement, resumeText) >= 0.42;
+};
+
 const extractKeywords = (jobText: string) => {
   const normalizedJob = normalize(jobText);
-  const tech = TECH_TERMS.filter((term) => normalizedJob.includes(normalize(term)));
+  const tech = TECH_TERMS.filter((term) => containsNormalizedTerm(jobText, term));
   const frequencies = tokenize(jobText).reduce<Record<string, number>>((acc, word) => {
     acc[word] = (acc[word] || 0) + 1;
     return acc;
@@ -739,13 +799,15 @@ const extractKeywords = (jobText: string) => {
 
   const frequent = Object.entries(frequencies)
     .filter(([word]) => !/^\d+$/.test(word))
+    .filter(([word]) => isUsefulMissingTerm(word))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 28)
     .map(([word]) => word);
 
-  const multiWord = Array.from(jobText.matchAll(/\b[A-ZÁ-Ú][\wÁ-ú.+#-]*(?:\s+[A-ZÁ-Úa-zá-ú][\wÁ-ú.+#-]*){1,3}/g))
+  const multiWord = Array.from(jobText.matchAll(/\b[A-ZÁ-Ú][\wÁ-ú.+#-]*(?:[ \t]+[A-ZÁ-Úa-zá-ú][\wÁ-ú.+#-]*){1,3}/g))
     .map(([match]) => match)
     .filter((term) => tokenize(term).length <= 4 && tokenize(term).length > 1)
+    .filter((term) => isUsefulMissingTerm(term))
     .slice(0, 18);
 
   return uniq([...tech, ...multiWord, ...frequent]).slice(0, 40);
@@ -753,18 +815,20 @@ const extractKeywords = (jobText: string) => {
 
 const extractHardSkills = (resumeText: string, jobText: string) => {
   const combined = `${resumeText}\n${jobText}`;
-  return uniq(TECH_TERMS.filter((term) => normalize(combined).includes(normalize(term)))).slice(0, 18);
+  return uniq(TECH_TERMS.filter((term) => containsNormalizedTerm(combined, term))).slice(0, 18);
 };
 
 const findRequirements = (jobText: string) => {
   const lines = jobText
     .split(/\n|•|- /)
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line) => !/^(sobre a vaga|responsabilidades?|requisitos?|benef[ií]cios?)\s*:?\s*$/i.test(line))
+    .filter((line) => !/^(cargo|local)\s*:/i.test(line));
 
   const strongSignals = lines.filter((line) =>
-    /(obrigatorio|required|must|necessario|requisito|experiencia|conhecimento|dominio|fluente|superior|bacharel|certifica)/i.test(
-      line,
+    /(obrigatorio|required|must|necessario|requisito|experiencia|ensino|conhecimento|dominio|fluente|superior|bacharel|certifica|atendimento|comunicacao|organizacao|disponibilidade)/i.test(
+      normalize(line),
     ),
   );
 
@@ -777,14 +841,16 @@ const getFormatIssues = (resumeText: string) => {
   const longLines = lines.filter((line) => line.length > 130).length;
   const hasSections = SECTION_HINTS.filter((section) => normalize(resumeText).includes(section)).length;
   const hasContact = /@|linkedin|github|\+\d{1,3}|\(\d{2}\)/i.test(resumeText);
-  const hasTables = /\t{2,}|\|/.test(resumeText);
+  const hasTables =
+    /\t{2,}/.test(resumeText) ||
+    lines.some((line) => !/@|linkedin|github|telefone|phone/i.test(line) && (line.match(/\|/g) || []).length >= 2);
   const hasMetrics = /\d+%|\b\d+[xkKmM]?\b/.test(resumeText);
 
-  if (!hasContact) issues.push("Contato pouco evidente para parsing automatico.");
-  if (hasSections < 4) issues.push("Poucas secoes padronizadas; ATS antigos podem classificar dados no campo errado.");
-  if (hasTables) issues.push("Possivel uso de tabela/colunas; Taleo e Workday tendem a sofrer mais com parsing irregular.");
+  if (!hasContact) issues.push("Contato pouco evidente para parsing automático.");
+  if (hasSections < 4) issues.push("Poucas seções padronizadas; ATS antigos podem classificar dados no campo errado.");
+  if (hasTables) issues.push("Possível uso de tabela/colunas; Taleo e Workday tendem a sofrer mais com parsing irregular.");
   if (longLines > 4) issues.push("Linhas muito longas reduzem escaneabilidade para recrutador e parser.");
-  if (!hasMetrics) issues.push("Poucas metricas/resultados numericos; matching humano e IA perdem evidencia de impacto.");
+  if (!hasMetrics) issues.push("Poucas métricas/resultados numéricos; matching humano e IA perdem evidência de impacto.");
   return issues;
 };
 
@@ -803,50 +869,67 @@ const getStructureRecommendations = (resumeText: string, jobText: string, missin
     recommendations.push("Substituir 'Objetivo' por 'Resumo profissional' com 3 linhas focadas no cargo-alvo.");
   }
   if (!hasSkills) {
-    recommendations.push("Criar uma secao 'Competencias-chave' logo apos o resumo, com habilidades comprovadas e palavras da vaga.");
+    recommendations.push("Criar uma seção 'Competências-chave' logo após o resumo, com habilidades comprovadas e palavras da vaga.");
   }
   if (!hasExperience) {
     recommendations.push("Adicionar 'Experiencia profissional' com empresas, cargos, datas e entregas em bullets.");
   }
   if (!hasEducation) {
-    recommendations.push("Adicionar 'Formacao' em formato simples: curso, instituicao e ano/status.");
+    recommendations.push("Adicionar 'Formação' em formato simples: curso, instituição e ano/status.");
   }
   if (sectionCount < 4) {
-    recommendations.push("Usar uma estrutura ATS-friendly: Contato, Resumo, Competencias, Experiencia, Formacao, Certificacoes e Idiomas.");
+    recommendations.push("Usar uma estrutura ATS-friendly: Contato, Resumo, Competências, Experiência, Formação, Certificações e Idiomas.");
   }
   if (missingCritical.length) {
-    recommendations.push("Levar requisitos obrigatorios comprovados para o terco superior do curriculo, antes de experiencias menos relevantes.");
+    recommendations.push("Levar requisitos obrigatórios comprovados para o terço superior do currículo, antes de experiências menos relevantes.");
   }
   if (jobTitle) {
-    recommendations.push(`Alinhar o titulo profissional ao cargo da vaga quando for verdadeiro: ${jobTitle}.`);
+    recommendations.push(`Alinhar o título profissional ao cargo da vaga quando for verdadeiro: ${jobTitle}.`);
   }
-  recommendations.push("Preferir uma coluna unica, fundo branco, texto selecionavel, sem foto, graficos, barras de habilidade ou tabelas complexas.");
-  recommendations.push("Manter o curriculo em 1 a 2 paginas para mercado corporativo; Lattes completo deve virar uma versao profissional resumida.");
+  recommendations.push("Preferir uma coluna única, fundo branco, texto selecionável, sem foto, gráficos, barras de habilidade ou tabelas complexas.");
+  recommendations.push("Manter o currículo em 1 a 2 páginas para mercado corporativo; Lattes completo deve virar uma versão profissional resumida.");
 
   return recommendations;
 };
 
-const getBlockerIssues = (resumeText: string, jobText: string, formatIssues: string[], missingCritical: string[]) => {
+const getBlockerIssues = (
+  resumeText: string,
+  jobText: string,
+  formatIssues: string[],
+  missingCritical: string[],
+  overallScore: number,
+  weakTerms: string[],
+) => {
   const blockers: string[] = [];
   const normalizedResume = normalize(resumeText);
   const normalizedJob = normalize(jobText);
 
-  if (!/@/.test(resumeText)) blockers.push("Pode enroscar: e-mail ausente ou dificil de identificar.");
-  if (!/linkedin/i.test(resumeText)) blockers.push("Pode enroscar: LinkedIn ausente; recrutadores usam muito para validar trajetoria.");
+  if (!/@/.test(resumeText)) blockers.push("Pode enroscar: e-mail ausente ou difícil de identificar.");
+  if (overallScore < 55 && missingCritical.length) {
+    blockers.push(
+      `Score baixo principalmente porque ${missingCritical.length} requisito(s) da vaga não aparecem com prova clara no currículo.`,
+    );
+  }
+  if (overallScore < 65 && weakTerms.length) {
+    blockers.push(`Termos relevantes da vaga ainda não aparecem no CV: ${weakTerms.slice(0, 5).map(polishKeyword).join(", ")}.`);
+  }
+  if (!/linkedin/i.test(resumeText) && blockers.length < 3) {
+    blockers.push("LinkedIn ausente: não derruba sozinho, mas reduz validação rápida de trajetória e projetos.");
+  }
   if (formatIssues.some((issue) => issue.includes("tabela"))) blockers.push("Pode enroscar: tabelas e colunas podem quebrar o parser do ATS.");
-  if (missingCritical.length >= 4) blockers.push("Pode enroscar: muitos requisitos obrigatorios da vaga nao aparecem com evidencia clara.");
-  if (!/\d+%|\b\d{2,}\b|R\$\s?\d+/i.test(resumeText)) blockers.push("Pode enroscar: pouca evidencia numerica de impacto, volume, prazo ou resultado.");
+  if (missingCritical.length >= 4) blockers.push("Pode enroscar: muitos requisitos obrigatórios da vaga não aparecem com evidência clara.");
+  if (!/\d+%|\b\d{2,}\b|R\$\s?\d+/i.test(resumeText)) blockers.push("Pode enroscar: pouca evidência numérica de impacto, volume, prazo ou resultado.");
   if (normalizedResume.includes("curriculo lattes") || normalizedResume.includes("producao bibliografica")) {
-    blockers.push("Pode enroscar: Lattes completo e academico demais para ATS corporativo; converta para resumo profissional.");
+    blockers.push("Pode enroscar: Lattes completo e acadêmico demais para ATS corporativo; converta para resumo profissional.");
   }
   if (normalizedJob.includes("ingles") && !normalizedResume.includes("ingles")) {
-    blockers.push("Pode enroscar: a vaga menciona ingles e o curriculo nao evidencia nivel do idioma.");
+    blockers.push("Pode enroscar: a vaga menciona inglês e o currículo não evidencia nível do idioma.");
   }
   if (resumeText.length > 16000) {
-    blockers.push("Pode enroscar: curriculo longo demais para triagem rapida; priorize a versao direcionada a vaga.");
+    blockers.push("Pode enroscar: currículo longo demais para triagem rápida; priorize a versão direcionada à vaga.");
   }
 
-  return blockers.length ? blockers : ["Nenhum bloqueio grave detectado. O foco agora e aumentar clareza, evidencia e aderencia textual."];
+  return blockers.length ? blockers : ["Nenhum bloqueio grave detectado. O foco agora é aumentar clareza, evidência e aderência textual."];
 };
 
 const buildFitStrengths = (
@@ -875,6 +958,13 @@ const buildFitStrengths = (
   return strengths.length ? strengths : ["O currículo tem base aproveitável, mas precisa evidenciar melhor os sinais da vaga."];
 };
 
+const cleanRequirementLabel = (value: string) =>
+  value
+    .replace(/^\s*(requisitos?|requirements?|qualifica[cç][oõ]es?)\s*:?\s*/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/\.$/, "")
+    .trim();
+
 const buildFitImprovements = (
   missingCritical: string[],
   weakTerms: string[],
@@ -884,10 +974,15 @@ const buildFitImprovements = (
 ) => {
   const improvements: string[] = [];
   if (missingCritical.length) {
-    improvements.push(`Explicitar melhor estes requisitos da vaga, se forem verdadeiros: ${missingCritical.slice(0, 3).join(" | ")}.`);
+    improvements.push(
+      `Comprovar no currículo estes pontos da vaga que ainda não ficaram claros: ${missingCritical
+        .slice(0, 3)
+        .map(cleanRequirementLabel)
+        .join(" | ")}.`,
+    );
   }
   if (weakTerms.length) {
-    improvements.push(`Ajustar linguagem para incluir termos relevantes ausentes: ${weakTerms.slice(0, 6).map(polishKeyword).join(", ")}.`);
+    improvements.push(`Ajustar linguagem com termos úteis da vaga: ${weakTerms.slice(0, 6).map(polishKeyword).join(", ")}.`);
   }
   if (!/\d+%|\b\d{2,}\b|R\$\s?\d+/i.test(resumeText)) {
     improvements.push("Adicionar impacto mensurável real: volume, prazo, resultado, redução, aumento, número de pessoas ou projetos.");
@@ -956,8 +1051,8 @@ const detectAts = (companyName: string, jobText: string, jobUrl: string): AtsPre
       name: exact.name,
       confidence: "Alta",
       source: jobUrl ? "Detectado pelo link da vaga" : "Detectado pelo texto da vaga",
-      evidence: [exact.evidence, "A simulacao principal deve priorizar esse motor."],
-      recommendation: "Use o card destacado como leitura principal; os outros cards continuam uteis como comparacao de risco.",
+      evidence: [exact.evidence, "A simulação principal deve priorizar esse motor."],
+      recommendation: "Use o card destacado como leitura principal; os outros cards continuam úteis como comparação de risco.",
     };
   }
 
@@ -965,29 +1060,29 @@ const detectAts = (companyName: string, jobText: string, jobUrl: string): AtsPre
   if (companyHint) {
     return {
       name: companyHint.name,
-      confidence: "Media",
+      confidence: "Média",
       source: "Estimado pelo perfil informado da empresa",
-      evidence: [companyHint.evidence, "Sem link de candidatura, nao da para confirmar a plataforma com seguranca."],
-      recommendation: "Cole o link real da vaga para aumentar a confianca da deteccao.",
+      evidence: [companyHint.evidence, "Sem link de candidatura, não dá para confirmar a plataforma com segurança."],
+      recommendation: "Cole o link real da vaga para aumentar a confiança da detecção.",
     };
   }
 
   if (companyName.trim()) {
     return {
-      name: "ATS nao identificado",
+      name: "ATS não identificado",
       confidence: "Baixa",
-      source: "Empresa informada, mas sem assinatura tecnica",
-      evidence: [`Empresa informada: ${companyName.trim()}`, "Nenhum dominio conhecido de ATS apareceu no link ou no texto."],
-      recommendation: "Cole o link da vaga ou da pagina de candidatura. O dominio costuma revelar o ATS real.",
+      source: "Empresa informada, mas sem assinatura técnica",
+      evidence: [`Empresa informada: ${companyName.trim()}`, "Nenhum domínio conhecido de ATS apareceu no link ou no texto."],
+      recommendation: "Cole o link da vaga ou da página de candidatura. O domínio costuma revelar o ATS real.",
     };
   }
 
   return {
-    name: "ATS nao identificado",
+    name: "ATS não identificado",
     confidence: "Baixa",
     source: "Sem empresa/link suficiente",
-    evidence: ["Informe a empresa e, de preferencia, o link da vaga."],
-    recommendation: "Enquanto nao houver deteccao, use a simulacao geral e corrija os riscos comuns de parsing, requisitos e palavras-chave.",
+    evidence: ["Informe a empresa e, de preferência, o link da vaga."],
+    recommendation: "Enquanto não houver detecção, use a simulação geral e corrija os riscos comuns de parsing, requisitos e palavras-chave.",
   };
 };
 
@@ -1257,7 +1352,7 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
   const matchedKeywords = keywords.filter((keyword) => phraseScore(keyword, resumeText) >= 0.68);
   const missingKeywords = keywords.filter((keyword) => !matchedKeywords.includes(keyword));
   const requirements = findRequirements(jobText);
-  const coveredRequirements = requirements.filter((req) => phraseScore(req, resumeText) >= 0.42);
+  const coveredRequirements = requirements.filter((req) => requirementCoveredByResume(req, resumeText));
   const hardSkills = extractHardSkills(resumeText, jobText);
   const formatIssues = getFormatIssues(resumeText);
   const metricMatches = resumeText.match(/\d+%|\b\d{2,}\b|R\$\s?\d+/g) || [];
@@ -1291,18 +1386,21 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
     return b.score - a.score;
   });
 
-  const weakTerms = missingKeywords.slice(0, 12);
+  const weakTerms = missingKeywords
+    .filter(isUsefulMissingTerm)
+    .filter((term) => !requirementCoveredByResume(term, resumeText))
+    .slice(0, 12);
   const missingCritical = requirements
     .filter((req) => !coveredRequirements.includes(req))
     .slice(0, 8);
   const structureRecommendations = getStructureRecommendations(resumeText, jobText, missingCritical);
-  const blockerIssues = getBlockerIssues(resumeText, jobText, formatIssues, missingCritical);
+  const blockerIssues = getBlockerIssues(resumeText, jobText, formatIssues, missingCritical, overallScore, weakTerms);
   const softSignals = uniq(
     ["lideranca", "comunicacao", "analise", "gestao", "colaboracao", "autonomia", "negociacao", "atendimento"].filter(
       (term) => normalize(jobText).includes(term) || normalize(resumeText).includes(term),
     ),
   );
-  const passProbability = overallScore >= 76 ? "Alta" : overallScore >= 55 ? "Media" : "Baixa";
+  const passProbability = overallScore >= 76 ? "Alta" : overallScore >= 55 ? "Média" : "Baixa";
 
   const fitStrengths = buildFitStrengths(matchedKeywords, hardSkills, coveredRequirements, metricDensity, formatIssues);
   const fitImprovements = buildFitImprovements(missingCritical, weakTerms, formatIssues, resumeText, jobText);
@@ -1314,9 +1412,9 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
   ];
 
   const integrityWarnings = [
-    "Nao adicione ferramenta, certificacao, idioma, senioridade ou resultado que nao exista na sua experiencia.",
-    "Quando faltar requisito, use formulacoes honestas como 'exposicao a', 'conhecimento pratico em' ou deixe como plano de desenvolvimento.",
-    "Curriculo otimizado aumenta leitura e recuperacao por busca, mas nenhuma ferramenta consegue garantir aprovacao automatica.",
+    "Não adicione ferramenta, certificação, idioma, senioridade ou resultado que não exista na sua experiência.",
+    "Quando faltar requisito, use formulações honestas como 'exposição a', 'conhecimento prático em' ou deixe como plano de desenvolvimento.",
+    "Currículo otimizado aumenta leitura e recuperação por busca, mas nenhuma ferramenta consegue garantir aprovação automática.",
   ];
 
   return {
@@ -1339,10 +1437,10 @@ export function analyzeResume(resumeText: string, jobText: string, companyName =
     optimizedResume: buildProfessionalResume(resumeText, jobText, matchedKeywords, hardSkills),
     recruiterSummary:
       overallScore >= 76
-        ? "O curriculo tem boa aderencia inicial. O ganho principal agora esta em evidenciar impacto e manter linguagem igual a vaga."
+        ? "O currículo tem boa aderência inicial. O ganho principal agora está em evidenciar impacto e manter linguagem igual à vaga."
         : overallScore >= 55
-          ? "O curriculo tem base aproveitavel, mas alguns requisitos e termos centrais precisam subir para o topo e aparecer com prova concreta."
-          : "O curriculo provavelmente seria fraco em filtros e busca. E preciso reposicionar resumo, habilidades e experiencias antes de aplicar.",
+          ? "O currículo tem base aproveitável, mas alguns requisitos e termos centrais precisam subir para o topo e aparecer com prova concreta."
+          : "O currículo provavelmente seria fraco em filtros e busca. É preciso reposicionar resumo, habilidades e experiências antes de aplicar.",
     integrityWarnings,
   };
 }
