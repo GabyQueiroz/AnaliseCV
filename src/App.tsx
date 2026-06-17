@@ -226,7 +226,17 @@ const readPdfFile = async (file: File) => {
   }
 
   const buffer = await file.arrayBuffer();
-  const document = await pdfjsLib.getDocument({ data: buffer }).promise;
+  let document: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
+
+  try {
+    document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)) }).promise;
+  } catch (error) {
+    try {
+      document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)), useWorkerFetch: false }).promise;
+    } catch {
+      throw new Error(error instanceof Error ? error.message : "Não foi possível ler esse PDF.");
+    }
+  }
   const pages: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {

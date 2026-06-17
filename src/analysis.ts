@@ -337,13 +337,18 @@ const ATS_SIGNATURES = [
   },
   {
     name: "Teamtailor",
-    patterns: ["teamtailor.com", "careers.teamtailor.com"],
+    patterns: ["teamtailor.com", "careers.teamtailor.com", "jobs.teamtailor.com"],
     evidence: "link de vaga em Teamtailor",
   },
   {
     name: "Recruitee / Tellent",
-    patterns: ["recruitee.com", "jobs.recruitee.com", "tellent.com"],
+    patterns: ["recruitee.com", "jobs.recruitee.com", "tellent.com", "careers.recruitee.com"],
     evidence: "link de vaga em Recruitee/Tellent",
+  },
+  {
+    name: "Manatal",
+    patterns: ["manatal.com", "jobs.manatal.com", "careers.manatal.com"],
+    evidence: "link de vaga em Manatal",
   },
   {
     name: "Personio Recruiting",
@@ -578,6 +583,15 @@ const ENGINE_DEFINITIONS: EngineDefinition[] = [
     baseAdjust: 0.02,
     formatAdjust: -0.01,
     requirementAdjust: 0,
+  },
+  {
+    name: "Manatal",
+    profile: "ATS com CRM e recursos de IA usado por agências, consultorias e PMEs; busca por skills e histórico pesa bastante.",
+    focus: ["skills", "keywords", "CRM"],
+    region: "Global / APAC / Europa / EUA",
+    baseAdjust: 0.03,
+    formatAdjust: 0,
+    requirementAdjust: 0.01,
   },
   {
     name: "Personio Recruiting",
