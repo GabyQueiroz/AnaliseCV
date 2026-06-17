@@ -31,6 +31,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 type InputMode = "upload" | "paste";
 type JobMode = "description" | "link";
 
+const MIN_RESUME_CHARS = 120;
+const MIN_JOB_CHARS = 80;
+
 const jobPlaceholder = `Exemplo de descrição:
 
 Cargo: Analista de Dados Pleno
@@ -220,6 +223,8 @@ const readDocxFile = async (file: File) => {
   return result.value;
 };
 
+const normalizeExtractedText = (text: string) => text.replace(/\s+/g, " ").trim();
+
 const readPdfFile = async (file: File) => {
   if (file.size === 0) {
     throw new Error("Esse PDF está vazio, com 0 bytes. Exporte novamente do Lattes em XML/HTML/TXT ou envie outro arquivo.");
@@ -243,20 +248,24 @@ const readPdfFile = async (file: File) => {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
     const rows = new Map<number, string[]>();
+    const rawItems: string[] = [];
 
     content.items.forEach((item) => {
       if (!("str" in item) || !item.str.trim()) return;
+      rawItems.push(item.str);
       const transform = "transform" in item ? item.transform : undefined;
       const y = Array.isArray(transform) && typeof transform[5] === "number" ? Math.round(transform[5] / 4) * 4 : 0;
       rows.set(y, [...(rows.get(y) || []), item.str]);
     });
 
-    pages.push(
+    const structuredText =
       [...rows.entries()]
         .sort((a, b) => b[0] - a[0])
         .map(([, row]) => row.join(" ").replace(/\s+/g, " ").trim())
-        .join("\n"),
-    );
+        .join("\n");
+    const rawText = rawItems.join(" ").replace(/\s+/g, " ").trim();
+
+    pages.push(normalizeExtractedText(structuredText).length >= 30 ? structuredText : rawText);
   }
 
   const text = pages.join("\n").trim();
@@ -718,7 +727,15 @@ export default function App() {
   const [error, setError] = useState("");
   const [jobError, setJobError] = useState("");
   const [jobSource, setJobSource] = useState("");
-  const canAnalyze = resumeText.trim().length > 120 && jobText.trim().length > 80;
+  const resumeChars = resumeText.trim().length;
+  const jobChars = jobText.trim().length;
+  const canAnalyze = resumeChars >= MIN_RESUME_CHARS && jobChars >= MIN_JOB_CHARS;
+  const readinessMessage =
+    resumeChars < MIN_RESUME_CHARS && jobChars < MIN_JOB_CHARS
+      ? `Currículo: ${resumeChars}/${MIN_RESUME_CHARS} caracteres. Vaga: ${jobChars}/${MIN_JOB_CHARS} caracteres.`
+      : resumeChars < MIN_RESUME_CHARS
+        ? `O currículo ainda tem pouco texto extraído: ${resumeChars}/${MIN_RESUME_CHARS} caracteres. Se for PDF escaneado/imagem, envie DOCX/TXT ou cole o texto.`
+        : `A vaga ainda tem pouco texto: ${jobChars}/${MIN_JOB_CHARS} caracteres. Cole descrição, requisitos e responsabilidades.`;
   const result = useMemo(
     () => (canAnalyze ? analyzeResume(resumeText, jobText, companyName, resolvedJobUrl || jobUrl, searchLocation) : null),
     [canAnalyze, resumeText, jobText, companyName, resolvedJobUrl, jobUrl, searchLocation],
@@ -841,6 +858,11 @@ export default function App() {
                 placeholder="Cole aqui o texto do currículo..."
               />
             )}
+            {resumeText ? (
+              <p className={resumeChars >= MIN_RESUME_CHARS ? "sourceNote" : "error"}>
+                Currículo lido: {resumeChars} caracteres.
+              </p>
+            ) : null}
             {error ? <p className="error">{error}</p> : null}
           </section>
 
@@ -919,6 +941,9 @@ export default function App() {
                   }}
                   placeholder={jobPlaceholder}
                 />
+                {jobText ? (
+                  <p className={jobChars >= MIN_JOB_CHARS ? "sourceNote" : "error"}>Vaga lida: {jobChars} caracteres.</p>
+                ) : null}
               </>
             )}
           </section>
@@ -928,7 +953,7 @@ export default function App() {
           <section className="emptyState">
             <Brain size={34} />
             <h2>Pronto para analisar</h2>
-            <p>Adicione um currículo com pelo menos 120 caracteres e uma vaga com pelo menos 80 caracteres.</p>
+            <p>{readinessMessage}</p>
           </section>
         ) : (
           <ResultPanel result={result} />
