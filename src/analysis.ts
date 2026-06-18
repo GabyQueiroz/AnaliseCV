@@ -271,6 +271,11 @@ const ROLE_RULES = [
 
 const ATS_SIGNATURES = [
   {
+    name: "Cortex ATS (BNP Paribas - trading)",
+    patterns: ["cortex ats", "bnp paribas cortex", "alternative trading system", "dark pool"],
+    evidence: "menção a Cortex ATS/BNP Paribas, que é Alternative Trading System de mercado financeiro",
+  },
+  {
     name: "Workday + HiredScore/Paradox",
     patterns: ["myworkdayjobs.com", "workday.com", "wd1.myworkdaysite.com", "wd3.myworkdayjobs.com"],
     evidence: "link de candidatura em domínio Workday",
@@ -476,6 +481,16 @@ type EngineDefinition = {
 };
 
 const ENGINE_DEFINITIONS: EngineDefinition[] = [
+  {
+    name: "Cortex ATS (BNP Paribas - trading)",
+    profile:
+      "Alternative Trading System/dark pool do BNP Paribas para negociação de ações, não um Applicant Tracking System de recrutamento.",
+    focus: ["trading", "dark pool", "não RH"],
+    region: "EUA / mercado financeiro",
+    baseAdjust: -0.25,
+    formatAdjust: 0,
+    requirementAdjust: -0.1,
+  },
   {
     name: "Workday + HiredScore/Paradox",
     profile: "Empresas globais e grandes corporações; parsing estruturado, requisitos e matching por habilidades.",
