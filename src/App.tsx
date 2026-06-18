@@ -57,6 +57,12 @@ type JobUrlResponse = {
   error?: string;
 };
 
+type ResumeParseResponse = {
+  text?: string;
+  chars?: number;
+  error?: string;
+};
+
 const parseJobResponse = async (response: Response) => {
   const contentType = response.headers.get("content-type") || "";
 
@@ -108,6 +114,29 @@ const fetchJobViaReader = async (targetUrl: string): Promise<JobUrlResponse> => 
 };
 
 const readTextFile = async (file: File) => file.text();
+
+const parseResumeOnServer = async (file: File, originalError?: unknown) => {
+  const response = await fetch("/api/parse-resume", {
+    method: "POST",
+    headers: {
+      "content-type": file.type || "application/pdf",
+      "x-file-name": encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? ((await response.json()) as ResumeParseResponse)
+    : ({ error: await response.text() } as ResumeParseResponse);
+
+  if (!response.ok || !data.text) {
+    const baseMessage = data.error || "Não foi possível extrair o PDF no servidor.";
+    const browserMessage = originalError instanceof Error ? ` Erro no navegador: ${originalError.message}` : "";
+    throw new Error(`${baseMessage}${browserMessage}`);
+  }
+
+  return data.text;
+};
 
 const decodeXmlValue = (value: string) =>
   value
@@ -230,50 +259,46 @@ const readPdfFile = async (file: File) => {
     throw new Error("Esse PDF está vazio, com 0 bytes. Exporte novamente do Lattes em XML/HTML/TXT ou envie outro arquivo.");
   }
 
-  const buffer = await file.arrayBuffer();
-  let document: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
-
   try {
+    const buffer = await file.arrayBuffer();
+    let document: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]>;
+
     document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)) }).promise;
-  } catch (error) {
-    try {
-      document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)), useWorkerFetch: false }).promise;
-    } catch {
-      throw new Error(error instanceof Error ? error.message : "Não foi possível ler esse PDF.");
-    }
-  }
-  const pages: string[] = [];
+    const pages: string[] = [];
 
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const rows = new Map<number, string[]>();
-    const rawItems: string[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const rows = new Map<number, string[]>();
+      const rawItems: string[] = [];
 
-    content.items.forEach((item) => {
-      if (!("str" in item) || !item.str.trim()) return;
-      rawItems.push(item.str);
-      const transform = "transform" in item ? item.transform : undefined;
-      const y = Array.isArray(transform) && typeof transform[5] === "number" ? Math.round(transform[5] / 4) * 4 : 0;
-      rows.set(y, [...(rows.get(y) || []), item.str]);
-    });
+      content.items.forEach((item) => {
+        if (!("str" in item) || !item.str.trim()) return;
+        rawItems.push(item.str);
+        const transform = "transform" in item ? item.transform : undefined;
+        const y = Array.isArray(transform) && typeof transform[5] === "number" ? Math.round(transform[5] / 4) * 4 : 0;
+        rows.set(y, [...(rows.get(y) || []), item.str]);
+      });
 
-    const structuredText =
-      [...rows.entries()]
+      const structuredText = [...rows.entries()]
         .sort((a, b) => b[0] - a[0])
         .map(([, row]) => row.join(" ").replace(/\s+/g, " ").trim())
         .join("\n");
-    const rawText = rawItems.join(" ").replace(/\s+/g, " ").trim();
+      const rawText = rawItems.join(" ").replace(/\s+/g, " ").trim();
 
-    pages.push(normalizeExtractedText(structuredText).length >= 30 ? structuredText : rawText);
+      pages.push(normalizeExtractedText(structuredText).length >= 30 ? structuredText : rawText);
+    }
+
+    await document.destroy();
+    const text = pages.join("\n").trim();
+    if (!text) {
+      throw new Error("Não encontrei texto selecionável nesse PDF. Se veio do Lattes, prefira exportar XML/HTML/TXT.");
+    }
+
+    return text;
+  } catch (error) {
+    return parseResumeOnServer(file, error);
   }
-
-  const text = pages.join("\n").trim();
-  if (!text) {
-    throw new Error("Não encontrei texto selecionável nesse PDF. Se veio do Lattes, prefira exportar XML/HTML/TXT.");
-  }
-
-  return text;
 };
 
 const parseFile = async (file: File) => {

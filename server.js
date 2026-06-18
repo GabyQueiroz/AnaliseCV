@@ -2,6 +2,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const port = Number(process.env.PORT || 3000);
 const distDir = resolve("dist");
@@ -24,6 +25,89 @@ const mimeTypes = {
 const sendJson = (res, status, payload) => {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
+};
+
+const readRequestBody = (req, maxBytes = 16 * 1024 * 1024) =>
+  new Promise((resolveBody, rejectBody) => {
+    const chunks = [];
+    let size = 0;
+
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        rejectBody(new Error("Arquivo maior que 16 MB."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolveBody(Buffer.concat(chunks)));
+    req.on("error", rejectBody);
+  });
+
+const normalizeExtractedText = (text) => text.replace(/\s+/g, " ").trim();
+
+const extractPdfText = async (buffer) => {
+  const document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const rows = new Map();
+    const rawItems = [];
+
+    content.items.forEach((item) => {
+      if (!("str" in item) || !item.str.trim()) return;
+      rawItems.push(item.str);
+      const transform = "transform" in item ? item.transform : undefined;
+      const y = Array.isArray(transform) && typeof transform[5] === "number" ? Math.round(transform[5] / 4) * 4 : 0;
+      rows.set(y, [...(rows.get(y) || []), item.str]);
+    });
+
+    const structuredText = [...rows.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, row]) => row.join(" ").replace(/\s+/g, " ").trim())
+      .join("\n");
+    const rawText = rawItems.join(" ").replace(/\s+/g, " ").trim();
+    pages.push(normalizeExtractedText(structuredText).length >= 30 ? structuredText : rawText);
+  }
+
+  await document.destroy();
+  return pages.join("\n").trim();
+};
+
+const handleParseResume = async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Use POST para enviar o currículo." });
+      return;
+    }
+
+    const contentType = req.headers["content-type"] || "";
+    const fileName = decodeURIComponent(String(req.headers["x-file-name"] || "curriculo.pdf"));
+
+    if (!contentType.includes("pdf") && !fileName.toLowerCase().endsWith(".pdf")) {
+      sendJson(res, 415, { error: "No momento, a extração no servidor aceita PDF." });
+      return;
+    }
+
+    const body = await readRequestBody(req);
+    if (!body.length) {
+      sendJson(res, 400, { error: "Arquivo vazio." });
+      return;
+    }
+
+    const text = await extractPdfText(body);
+    if (!text) {
+      sendJson(res, 422, { error: "Não encontrei texto selecionável nesse PDF. Se for imagem/scan, envie DOCX/TXT ou cole o texto." });
+      return;
+    }
+
+    sendJson(res, 200, { text, chars: text.length });
+  } catch (error) {
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Não foi possível extrair o PDF no servidor." });
+  }
 };
 
 const navigationNoise =
@@ -140,6 +224,11 @@ const serveStatic = async (req, res) => {
 };
 
 createServer((req, res) => {
+  if (req.url?.startsWith("/api/parse-resume")) {
+    void handleParseResume(req, res);
+    return;
+  }
+
   if (req.url?.startsWith("/api/job-from-url")) {
     void handleJobFromUrl(req, res);
     return;
