@@ -22,8 +22,8 @@ import {
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import * as mammoth from "mammoth";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import { analyzeResume, type AnalysisResult } from "./analysis";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
